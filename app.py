@@ -38,16 +38,16 @@ current_conv = st.session_state.conversations[st.session_state.current_conv_id]
 
 # ---------- 侧边栏 ----------
 with st.sidebar:
-    # 响应模式（单选按钮）
-    st.radio(
+    # 响应模式（下拉框）
+    st.selectbox(
         "响应模式",
         options=["高速响应", "深度推理"],
         index=0 if st.session_state.model_mode == "高速响应" else 1,
         key="model_mode"
     )
 
-    # 助手角色（单选按钮）
-    new_template = st.radio(
+    # 助手角色（下拉框）
+    new_template = st.selectbox(
         "助手角色",
         options=list(PROMPT_TEMPLATES.keys()),
         index=list(PROMPT_TEMPLATES.keys()).index(current_conv.get("template", "通用助手"))
