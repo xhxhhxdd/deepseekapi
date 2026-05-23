@@ -38,30 +38,24 @@ current_conv = st.session_state.conversations[st.session_state.current_conv_id]
 
 # ---------- 侧边栏 ----------
 with st.sidebar:
-    # 响应模式（纯按钮）
-    st.write("响应模式")
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("高速响应", use_container_width=True,
-                      type="primary" if st.session_state.model_mode == "高速响应" else "secondary"):
-            st.session_state.model_mode = "高速响应"
-            st.rerun()
-    with c2:
-        if st.button("深度推理", use_container_width=True,
-                      type="primary" if st.session_state.model_mode == "深度推理" else "secondary"):
-            st.session_state.model_mode = "深度推理"
-            st.rerun()
+    # 响应模式（下拉框）
+    st.selectbox(
+        "响应模式",
+        options=["高速响应", "深度推理"],
+        index=0 if st.session_state.model_mode == "高速响应" else 1,
+        key="model_mode"
+    )
 
-    st.divider()
-
-    # 助手角色（纯按钮）
-    st.write("助手角色")
-    for role in PROMPT_TEMPLATES.keys():
-        if st.button(role, use_container_width=True,
-                     type="primary" if current_conv.get("template") == role else "secondary"):
-            current_conv["template"] = role
-            current_conv["messages"][0] = {"role": "system", "content": PROMPT_TEMPLATES[role]}
-            st.rerun()
+    # 助手角色（下拉框）
+    new_template = st.selectbox(
+        "助手角色",
+        options=list(PROMPT_TEMPLATES.keys()),
+        index=list(PROMPT_TEMPLATES.keys()).index(current_conv.get("template", "通用助手"))
+    )
+    if new_template != current_conv.get("template", "通用助手"):
+        current_conv["template"] = new_template
+        current_conv["messages"][0] = {"role": "system", "content": PROMPT_TEMPLATES[new_template]}
+        st.rerun()
 
     st.divider()
 
@@ -101,7 +95,6 @@ with st.sidebar:
                 st.rerun()
 
 # ---------- 主区域 ----------
-# 显示聊天记录
 for i, msg in enumerate(current_conv["messages"]):
     if msg["role"] != "system":
         with st.chat_message(msg["role"]):
@@ -117,7 +110,6 @@ for i, msg in enumerate(current_conv["messages"]):
                         current_conv["messages"] = current_conv["messages"][:i]
                         st.rerun()
 
-# 聊天输入
 if prompt := st.chat_input("输入你的问题..."):
     current_conv["messages"].append({"role": "user", "content": prompt})
     with st.chat_message("user"):
