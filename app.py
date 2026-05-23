@@ -91,6 +91,33 @@ if "current_page" not in st.session_state:
 
 current_conv = st.session_state.conversations[st.session_state.current_conv_id]
 
+# ---------- 自定义CSS：固定底部输入栏 ----------
+st.markdown("""
+<style>
+    .fixed-bottom {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background-color: #ffffff;
+        z-index: 999;
+        padding: 0.75rem 1.5rem;
+        border-top: 1px solid #e0e0e0;
+    }
+    .main-area {
+        padding-bottom: 80px;
+    }
+    .stFileUploader > section > div {
+        padding: 0;
+    }
+    .stFileUploader button {
+        min-width: 38px;
+        height: 38px;
+        padding: 4px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # ---------- 侧边栏 ----------
 with st.sidebar:
     st.selectbox("功能", ["聊天", "JD生成器", "简历匹配", "面试题生成", "培训大纲"], key="current_page")
@@ -123,7 +150,7 @@ with st.sidebar:
 
         st.divider()
 
-        # 对话列表（纯标题，可点击切换，当前对话高亮）
+        # 对话列表
         conv_ids = list(st.session_state.conversations.keys())
         for cid in conv_ids:
             conv = st.session_state.conversations[cid]
@@ -132,7 +159,6 @@ with st.sidebar:
                     if m["role"] == "user":
                         conv["title"] = m["content"][:20]
                         break
-
             is_current = (cid == st.session_state.current_conv_id)
             bg = "#e6f0ff" if is_current else "transparent"
             st.markdown(f'<div style="background:{bg};padding:0.3rem 0.5rem;border-radius:4px;margin-bottom:2px;">', unsafe_allow_html=True)
@@ -143,36 +169,38 @@ with st.sidebar:
 
 # ---------- 主区域 ----------
 if st.session_state.current_page == "聊天":
-    # 显示聊天记录
+    # 聊天记录区域
+    st.markdown('<div class="main-area">', unsafe_allow_html=True)
     for msg in current_conv["messages"]:
         if msg["role"] != "system":
             with st.chat_message(msg["role"]):
                 st.write(msg["content"])
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    # 底部输入区：文本输入 + 文件上传图标 + 发送按钮
-    with st.container():
-        col_text, col_file, col_send = st.columns([7, 1, 1])
-        with col_text:
-            user_input = st.text_input(
-                "输入消息",
-                key="user_input",
-                label_visibility="collapsed",
-                placeholder="输入你的问题..."
-            )
-        with col_file:
-            uploaded_file = st.file_uploader(
-                "文件",
-                type=["pdf", "doc", "docx", "txt"],
-                label_visibility="collapsed",
-                key="file_upload"
-            )
-        with col_send:
-            send_clicked = st.button("发送", use_container_width=True)
+    # 固定底部的输入栏
+    st.markdown('<div class="fixed-bottom">', unsafe_allow_html=True)
+    col_input, col_file, col_send = st.columns([15, 1, 2])
+    with col_input:
+        user_text = st.text_input(
+            "",
+            key="user_input",
+            label_visibility="collapsed",
+            placeholder="输入你的问题..."
+        )
+    with col_file:
+        uploaded_file = st.file_uploader(
+            "",
+            type=["pdf", "doc", "docx", "txt"],
+            label_visibility="collapsed",
+            key="file_upload"
+        )
+    with col_send:
+        send_clicked = st.button("发送", use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
     # 处理发送
-    if send_clicked or (uploaded_file is not None and user_input.strip() == ""):
+    if send_clicked:
         file_content = None
-        # 处理上传文件
         if uploaded_file is not None:
             file_content = read_uploaded_file(uploaded_file)
             if file_content and not file_content.startswith("["):
@@ -183,14 +211,12 @@ if st.session_state.current_page == "聊天":
             with st.chat_message("user"):
                 st.write(file_msg)
 
-        # 处理文本
-        if user_input.strip():
-            current_conv["messages"].append({"role": "user", "content": user_input})
+        if user_text.strip():
+            current_conv["messages"].append({"role": "user", "content": user_text})
             with st.chat_message("user"):
-                st.write(user_input)
+                st.write(user_text)
 
-        # 有内容才调API
-        if user_input.strip() or uploaded_file is not None:
+        if user_text.strip() or uploaded_file is not None:
             with st.chat_message("assistant"):
                 model = "deepseek-reasoner" if st.session_state.model_mode == "深度推理" else "deepseek-chat"
                 stream = client.chat.completions.create(
@@ -201,8 +227,8 @@ if st.session_state.current_page == "聊天":
                 response = st.write_stream(stream)
             current_conv["messages"].append({"role": "assistant", "content": response})
 
-            if current_conv["title"] == "新对话" and user_input.strip():
-                current_conv["title"] = user_input[:20]
+            if current_conv["title"] == "新对话" and user_text.strip():
+                current_conv["title"] = user_text[:20]
 
             save_conversations()
             st.rerun()
