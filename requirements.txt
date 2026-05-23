@@ -1,4 +1,4 @@
-streamlit
+gradio
 openai
 PyPDF2
 python-docx
