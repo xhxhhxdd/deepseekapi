@@ -2,34 +2,68 @@ import streamlit as st
 from openai import OpenAI
 import uuid
 
-st.set_page_config(page_title="AI助手", page_icon="🤖", layout="wide")
+# ---------- 页面配置 ----------
+st.set_page_config(page_title="AI助手", layout="wide")
 
-# 用 Streamlit Secrets 管理 Key
+# ---------- 加载 API Key ----------
 client = OpenAI(
-api_key=st.secrets["DEEPSEEK_KEY"],
+    api_key=st.secrets["DEEPSEEK_KEY"],
     base_url="https://api.deepseek.com"
 )
 
-# 初始化对话管理
+# ---------- 提示词模板 ----------
+PROMPT_TEMPLATES = {
+    "通用助手": "你是一个友善、有用的助手，回答简洁清晰。",
+    "HR顾问": "你是一个专业的人力资源顾问，擅长招聘、培训、绩效管理和劳动法规，回答专业且实用。",
+    "学习导师": "你是一个耐心的学习导师，用通俗易懂的方式解释概念，善于举例和引导思考。",
+    "文案润色": "你是一个文案润色专家，帮助优化文字表达，使其更流畅、专业、有说服力。",
+}
+
+# ---------- 对话管理初始化 ----------
 if "conversations" not in st.session_state:
     first_id = str(uuid.uuid4())
     st.session_state.conversations = {
-        first_id: {"title": "新对话", "messages": [{"role": "system", "content": "你是一个友善的助手。"}]}
+        first_id: {
+            "title": "新对话",
+            "template": "通用助手",
+            "messages": [{"role": "system", "content": PROMPT_TEMPLATES["通用助手"]}]
+        }
     }
     st.session_state.current_conv_id = first_id
 
-# 侧边栏
+current_conv = st.session_state.conversations[st.session_state.current_conv_id]
+
+# ---------- 侧边栏 ----------
 with st.sidebar:
     st.title("对话管理")
-    if st.button("＋ 新建对话", use_container_width=True):
+
+    # 提示词模板切换
+    new_template = st.selectbox(
+        "助手角色",
+        list(PROMPT_TEMPLATES.keys()),
+        index=list(PROMPT_TEMPLATES.keys()).index(current_conv.get("template", "通用助手"))
+    )
+    if new_template != current_conv.get("template", "通用助手"):
+        current_conv["template"] = new_template
+        current_conv["messages"][0] = {"role": "system", "content": PROMPT_TEMPLATES[new_template]}
+        st.rerun()
+
+    st.divider()
+
+    # 新建对话
+    if st.button("新建对话", use_container_width=True):
         new_id = str(uuid.uuid4())
         st.session_state.conversations[new_id] = {
             "title": "新对话",
-            "messages": [{"role": "system", "content": "你是一个友善的助手。"}]
+            "template": "通用助手",
+            "messages": [{"role": "system", "content": PROMPT_TEMPLATES["通用助手"]}]
         }
         st.session_state.current_conv_id = new_id
         st.rerun()
+
     st.divider()
+
+    # 对话列表
     for cid in list(st.session_state.conversations.keys()):
         conv = st.session_state.conversations[cid]
         if conv["title"] == "新对话" and len(conv["messages"]) > 1:
@@ -39,36 +73,56 @@ with st.sidebar:
                     break
         c1, c2 = st.columns([4, 1])
         with c1:
-            if st.button(f"📄 {conv['title']}", key=f"sw_{cid}", use_container_width=True):
+            label = conv["title"]
+            if cid == st.session_state.current_conv_id:
+                label = "> " + label
+            if st.button(label, key=f"sw_{cid}", use_container_width=True):
                 st.session_state.current_conv_id = cid
                 st.rerun()
         with c2:
-            if st.button("🗑", key=f"del_{cid}"):
+            if st.button("X", key=f"del_{cid}"):
                 del st.session_state.conversations[cid]
                 if st.session_state.current_conv_id == cid:
-                    st.session_state.current_conv_id = next(iter(st.session_state.conversations)) if st.session_state.conversations else None
+                    if st.session_state.conversations:
+                        st.session_state.current_conv_id = next(iter(st.session_state.conversations))
                 st.rerun()
 
-# 主聊天区
-conv = st.session_state.conversations[st.session_state.current_conv_id]
-st.title("🤖 AI 助手")
-for msg in conv["messages"]:
+# ---------- 主区域 ----------
+st.title("AI助手")
+
+# 显示聊天记录
+for i, msg in enumerate(current_conv["messages"]):
     if msg["role"] != "system":
         with st.chat_message(msg["role"]):
             st.write(msg["content"])
+            if msg["role"] == "assistant" and msg["content"]:
+                c1, c2, c3 = st.columns([1, 1, 4])
+                with c1:
+                    if st.button("复制", key=f"copy_{i}"):
+                        st.toast("已复制到剪贴板")
+                        st.session_state.clipboard = msg["content"]
+                with c2:
+                    if st.button("重新生成", key=f"regen_{i}"):
+                        current_conv["messages"] = current_conv["messages"][:i]
+                        st.rerun()
 
-if prompt := st.chat_input("说点什么..."):
-    conv["messages"].append({"role": "user", "content": prompt})
+# ---------- 聊天输入 ----------
+if prompt := st.chat_input("输入你的问题..."):
+    current_conv["messages"].append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.write(prompt)
+
     with st.chat_message("assistant"):
         stream = client.chat.completions.create(
             model="deepseek-chat",
-            messages=conv["messages"],
+            messages=current_conv["messages"],
             stream=True
         )
         response = st.write_stream(stream)
-    conv["messages"].append({"role": "assistant", "content": response})
-    if conv["title"] == "新对话":
-        conv["title"] = prompt[:20]
+
+    current_conv["messages"].append({"role": "assistant", "content": response})
+
+    if current_conv["title"] == "新对话":
+        current_conv["title"] = prompt[:20]
+
     st.rerun()
