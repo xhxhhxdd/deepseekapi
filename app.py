@@ -91,33 +91,6 @@ if "current_page" not in st.session_state:
 
 current_conv = st.session_state.conversations[st.session_state.current_conv_id]
 
-# ---------- 自定义CSS：固定底部输入栏 ----------
-st.markdown("""
-<style>
-    .fixed-bottom {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        background-color: #ffffff;
-        z-index: 999;
-        padding: 0.75rem 1.5rem;
-        border-top: 1px solid #e0e0e0;
-    }
-    .main-area {
-        padding-bottom: 80px;
-    }
-    .stFileUploader > section > div {
-        padding: 0;
-    }
-    .stFileUploader button {
-        min-width: 38px;
-        height: 38px;
-        padding: 4px;
-    }
-</style>
-""", unsafe_allow_html=True)
-
 # ---------- 侧边栏 ----------
 with st.sidebar:
     st.selectbox("功能", ["聊天", "JD生成器", "简历匹配", "面试题生成", "培训大纲"], key="current_page")
@@ -169,38 +142,24 @@ with st.sidebar:
 
 # ---------- 主区域 ----------
 if st.session_state.current_page == "聊天":
-    # 聊天记录区域
-    st.markdown('<div class="main-area">', unsafe_allow_html=True)
+    # 显示聊天记录
     for msg in current_conv["messages"]:
         if msg["role"] != "system":
             with st.chat_message(msg["role"]):
                 st.write(msg["content"])
-    st.markdown('</div>', unsafe_allow_html=True)
 
-    # 固定底部的输入栏
-    st.markdown('<div class="fixed-bottom">', unsafe_allow_html=True)
-    col_input, col_file, col_send = st.columns([15, 1, 2])
-    with col_input:
-        user_text = st.text_input(
-            "",
-            key="user_input",
-            label_visibility="collapsed",
-            placeholder="输入你的问题..."
-        )
-    with col_file:
-        uploaded_file = st.file_uploader(
-            "",
-            type=["pdf", "doc", "docx", "txt"],
-            label_visibility="collapsed",
-            key="file_upload"
-        )
-    with col_send:
-        send_clicked = st.button("发送", use_container_width=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+    # 固定底部输入区：使用 st.chat_input 自动固定，并在其上方加文件上传小框
+    # 由于 st.chat_input 本身就是固定在底部的，我们在它上面再加一个极窄的上传区域
+    col_upload, _ = st.columns([1, 20])
+    with col_upload:
+        uploaded_file = st.file_uploader("", type=["pdf", "doc", "docx", "txt"], label_visibility="collapsed", key="file_upload")
 
-    # 处理发送
-    if send_clicked:
+    prompt = st.chat_input("输入你的问题...")
+
+    # 处理发送（chat_input 回车或点击发送）
+    if prompt or uploaded_file:
         file_content = None
+        # 处理上传文件（如果有）
         if uploaded_file is not None:
             file_content = read_uploaded_file(uploaded_file)
             if file_content and not file_content.startswith("["):
@@ -211,12 +170,13 @@ if st.session_state.current_page == "聊天":
             with st.chat_message("user"):
                 st.write(file_msg)
 
-        if user_text.strip():
-            current_conv["messages"].append({"role": "user", "content": user_text})
+        if prompt and prompt.strip():
+            current_conv["messages"].append({"role": "user", "content": prompt.strip()})
             with st.chat_message("user"):
-                st.write(user_text)
+                st.write(prompt.strip())
 
-        if user_text.strip() or uploaded_file is not None:
+        # 有内容才调API
+        if (prompt and prompt.strip()) or uploaded_file is not None:
             with st.chat_message("assistant"):
                 model = "deepseek-reasoner" if st.session_state.model_mode == "深度推理" else "deepseek-chat"
                 stream = client.chat.completions.create(
@@ -227,10 +187,12 @@ if st.session_state.current_page == "聊天":
                 response = st.write_stream(stream)
             current_conv["messages"].append({"role": "assistant", "content": response})
 
-            if current_conv["title"] == "新对话" and user_text.strip():
-                current_conv["title"] = user_text[:20]
+            if current_conv["title"] == "新对话" and prompt and prompt.strip():
+                current_conv["title"] = prompt.strip()[:20]
 
             save_conversations()
+            # 清空文件上传状态（不好清，rerun 会重置组件，但文件上传组件会保留，可尝试用 key 重置）
+            st.session_state.file_upload = None
             st.rerun()
 
 # ---------- HR工具页面 ----------
