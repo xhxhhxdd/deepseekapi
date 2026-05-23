@@ -1,6 +1,8 @@
 import streamlit as st
 from openai import OpenAI
 import uuid
+import json
+import os
 
 # ---------- 页面配置 ----------
 st.set_page_config(page_title="AI助手", layout="wide")
@@ -19,17 +21,38 @@ PROMPT_TEMPLATES = {
     "文案润色": "你是一个文案润色专家，帮助优化文字表达，使其更流畅、专业、有说服力。",
 }
 
+# ---------- 文件路径 ----------
+DATA_FILE = "conversations.json"
+
+# ---------- 保存对话到文件 ----------
+def save_conversations():
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(st.session_state.conversations, f, ensure_ascii=False, indent=2)
+
+# ---------- 从文件加载对话 ----------
+def load_conversations():
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return None
+
 # ---------- 全局状态初始化 ----------
 if "conversations" not in st.session_state:
-    first_id = str(uuid.uuid4())
-    st.session_state.conversations = {
-        first_id: {
-            "title": "新对话",
-            "template": "通用助手",
-            "messages": [{"role": "system", "content": PROMPT_TEMPLATES["通用助手"]}]
+    saved = load_conversations()
+    if saved:
+        st.session_state.conversations = saved
+        st.session_state.current_conv_id = list(saved.keys())[0]
+    else:
+        first_id = str(uuid.uuid4())
+        st.session_state.conversations = {
+            first_id: {
+                "title": "新对话",
+                "template": "通用助手",
+                "messages": [{"role": "system", "content": PROMPT_TEMPLATES["通用助手"]}]
+            }
         }
-    }
-    st.session_state.current_conv_id = first_id
+        st.session_state.current_conv_id = first_id
+        save_conversations()
 
 if "model_mode" not in st.session_state:
     st.session_state.model_mode = "高速响应"
@@ -55,6 +78,7 @@ with st.sidebar:
     if new_template != current_conv.get("template", "通用助手"):
         current_conv["template"] = new_template
         current_conv["messages"][0] = {"role": "system", "content": PROMPT_TEMPLATES[new_template]}
+        save_conversations()
         st.rerun()
 
     st.divider()
@@ -68,6 +92,7 @@ with st.sidebar:
             "messages": [{"role": "system", "content": PROMPT_TEMPLATES["通用助手"]}]
         }
         st.session_state.current_conv_id = new_id
+        save_conversations()
         st.rerun()
 
     st.divider()
@@ -92,6 +117,7 @@ with st.sidebar:
                 if st.session_state.current_conv_id == cid:
                     if st.session_state.conversations:
                         st.session_state.current_conv_id = next(iter(st.session_state.conversations))
+                save_conversations()
                 st.rerun()
 
 # ---------- 主区域 ----------
@@ -108,6 +134,7 @@ for i, msg in enumerate(current_conv["messages"]):
                 with c2:
                     if st.button("重新生成", key=f"regen_{i}"):
                         current_conv["messages"] = current_conv["messages"][:i]
+                        save_conversations()
                         st.rerun()
 
 if prompt := st.chat_input("输入你的问题..."):
@@ -133,4 +160,5 @@ if prompt := st.chat_input("输入你的问题..."):
     if current_conv["title"] == "新对话":
         current_conv["title"] = prompt[:20]
 
+    save_conversations()
     st.rerun()
